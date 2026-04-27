@@ -15,6 +15,7 @@ import pk.ajneb97.managers.*;
 import pk.ajneb97.managers.dependencies.Metrics;
 import pk.ajneb97.managers.edit.InventoryEditManager;
 import pk.ajneb97.model.internal.UpdateCheckerResult;
+import pk.ajneb97.sync.RedisKitSyncManager;
 import pk.ajneb97.tasks.InventoryUpdateTaskManager;
 import pk.ajneb97.tasks.PlayerDataSaveTask;
 import pk.ajneb97.versions.NMSManager;
@@ -42,6 +43,7 @@ public class PlayerKits2 extends JavaPlugin {
     private InventoryUpdateTaskManager inventoryUpdateTaskManager;
     private PlayerDataSaveTask playerDataSaveTask;
     private MySQLConnection mySQLConnection;
+    private RedisKitSyncManager redisKitSyncManager;
 
     public void onEnable(){
         setVersion();
@@ -61,6 +63,8 @@ public class PlayerKits2 extends JavaPlugin {
         this.configsManager.configure();
 
         this.migrationManager = new MigrationManager(this);
+        this.redisKitSyncManager = new RedisKitSyncManager(this);
+        this.redisKitSyncManager.start();
 
         this.inventoryUpdateTaskManager = new InventoryUpdateTaskManager(this);
         this.inventoryUpdateTaskManager.start();
@@ -90,6 +94,9 @@ public class PlayerKits2 extends JavaPlugin {
 
     public void onDisable(){
         this.configsManager.getPlayersConfigManager().saveConfigs();
+        if(redisKitSyncManager != null){
+            redisKitSyncManager.shutdown();
+        }
         Bukkit.getConsoleSender().sendMessage(MessagesManager.getLegacyColoredMessage(prefix+"&eHas been disabled! &fVersion: "+version));
     }
 
@@ -193,6 +200,10 @@ public class PlayerKits2 extends JavaPlugin {
 
     public MySQLConnection getMySQLConnection() {
         return mySQLConnection;
+    }
+
+    public RedisKitSyncManager getRedisKitSyncManager() {
+        return redisKitSyncManager;
     }
 
     public NMSManager getNmsManager() {

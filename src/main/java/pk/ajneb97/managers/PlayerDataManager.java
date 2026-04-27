@@ -4,12 +4,15 @@ import org.bukkit.entity.Player;
 import pk.ajneb97.PlayerKits2;
 import pk.ajneb97.database.MySQLConnection;
 import pk.ajneb97.model.PlayerData;
+import pk.ajneb97.model.PlayerDataKit;
 import pk.ajneb97.model.internal.PlayerKitsMessageResult;
+import pk.ajneb97.sync.RedisKitSyncManager;
 import pk.ajneb97.utils.OtherUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 public class PlayerDataManager {
@@ -76,12 +79,14 @@ public class PlayerDataManager {
         PlayerData playerData = getPlayer(player,true);
         boolean creating = playerData.setKitCooldown(kitName,cooldown);
         playerData.setModified(true);
+        syncKitToRedis(playerData, kitName);
         if(plugin.getMySQLConnection() != null){
             plugin.getMySQLConnection().updateKit(playerData,playerData.getKit(kitName),creating);
         }
     }
 
     public long getKitCooldown(Player player,String kitName){
+        syncKitFromRedis(player, kitName);
         PlayerData playerData = getPlayerByUUID(player.getUniqueId());
         if(playerData == null){
             return 0;
@@ -101,12 +106,14 @@ public class PlayerDataManager {
         PlayerData playerData = getPlayer(player,true);
         boolean creating = playerData.setKitOneTime(kitName);
         playerData.setModified(true);
+        syncKitToRedis(playerData, kitName);
         if(plugin.getMySQLConnection() != null){
             plugin.getMySQLConnection().updateKit(playerData,playerData.getKit(kitName),creating);
         }
     }
 
     public boolean isKitOneTime(Player player,String kitName){
+        syncKitFromRedis(player, kitName);
         PlayerData playerData = getPlayerByUUID(player.getUniqueId());
         if(playerData == null){
             return false;
@@ -119,12 +126,14 @@ public class PlayerDataManager {
         PlayerData playerData = getPlayer(player,true);
         boolean creating = playerData.setKitBought(kitName);
         playerData.setModified(true);
+        syncKitToRedis(playerData, kitName);
         if(plugin.getMySQLConnection() != null){
             plugin.getMySQLConnection().updateKit(playerData,playerData.getKit(kitName),creating);
         }
     }
 
     public boolean isKitBought(Player player,String kitName){
+        syncKitFromRedis(player, kitName);
         PlayerData playerData = getPlayerByUUID(player.getUniqueId());
         if(playerData == null){
             return false;
@@ -157,8 +166,45 @@ public class PlayerDataManager {
             }
 
         }
+        RedisKitSyncManager redisKitSyncManager = plugin.getRedisKitSyncManager();
+        if(redisKitSyncManager != null && redisKitSyncManager.isEnabled()){
+            if(all){
+                redisKitSyncManager.resetKitForAllPlayers(kitName);
+            }else{
+                redisKitSyncManager.resetKit(playerData.getUuid(), kitName);
+            }
+        }
 
         return PlayerKitsMessageResult.success();
+    }
+
+    private void syncKitFromRedis(Player player, String kitName){
+        RedisKitSyncManager redisKitSyncManager = plugin.getRedisKitSyncManager();
+        if(redisKitSyncManager == null || !redisKitSyncManager.isEnabled()){
+            return;
+        }
+
+        Optional<PlayerDataKit> remoteKit = redisKitSyncManager.getKit(player.getUniqueId(), kitName);
+        if(!remoteKit.isPresent()){
+            return;
+        }
+
+        PlayerData playerData = getPlayer(player,true);
+        if(playerData.mergeKit(remoteKit.get())){
+            playerData.setModified(true);
+        }
+    }
+
+    private void syncKitToRedis(PlayerData playerData, String kitName){
+        RedisKitSyncManager redisKitSyncManager = plugin.getRedisKitSyncManager();
+        if(redisKitSyncManager == null || !redisKitSyncManager.isEnabled()){
+            return;
+        }
+
+        PlayerDataKit kit = playerData.getKit(kitName);
+        if(kit != null){
+            redisKitSyncManager.saveKit(playerData.getUuid(), kit);
+        }
     }
 
     public void manageJoin(Player player){
