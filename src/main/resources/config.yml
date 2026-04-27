@@ -57,3 +57,13 @@ mysql_database:
     verifyServerCertificate: false
     useSSL: true
     allowPublicKeyRetrieval: true
+redis_sync:
+  enabled: false
+  host: localhost
+  port: 6379
+  database: 0
+  user: ''
+  password: ''
+  use_ssl: false
+  timeout_millis: 1000
+  key_prefix: playerkits2

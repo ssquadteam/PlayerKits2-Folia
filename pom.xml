@@ -94,6 +94,11 @@
             <artifactId>minelib-scheduler-global</artifactId>
             <version>1.2.1</version>
         </dependency>
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>6.3.2.RELEASE</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -140,6 +145,22 @@
                                 <relocation>
                                     <pattern>io.github.projectunified.minelib</pattern>
                                     <shadedPattern>pk.ajneb97.libs.minelib</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.lettuce.core</pattern>
+                                    <shadedPattern>pk.ajneb97.libs.lettuce</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.netty</pattern>
+                                    <shadedPattern>pk.ajneb97.libs.netty</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>reactor</pattern>
+                                    <shadedPattern>pk.ajneb97.libs.reactor</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.reactivestreams</pattern>
+                                    <shadedPattern>pk.ajneb97.libs.reactivestreams</shadedPattern>
                                 </relocation>
                             </relocations>
                         </configuration>

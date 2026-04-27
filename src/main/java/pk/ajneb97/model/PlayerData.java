@@ -46,6 +46,33 @@ public class PlayerData {
         this.kits.add(kit);
     }
 
+    public boolean mergeKit(PlayerDataKit incoming){
+        PlayerDataKit current = getKit(incoming.getName());
+        if(current == null){
+            PlayerDataKit copy = new PlayerDataKit(incoming.getName());
+            copy.setCooldown(incoming.getCooldown());
+            copy.setOneTime(incoming.isOneTime());
+            copy.setBought(incoming.isBought());
+            kits.add(copy);
+            return true;
+        }
+
+        boolean changed = false;
+        if(incoming.getCooldown() > current.getCooldown()){
+            current.setCooldown(incoming.getCooldown());
+            changed = true;
+        }
+        if(incoming.isOneTime() && !current.isOneTime()){
+            current.setOneTime(true);
+            changed = true;
+        }
+        if(incoming.isBought() && !current.isBought()){
+            current.setBought(true);
+            changed = true;
+        }
+        return changed;
+    }
+
     public boolean isModified() {
         return modified;
     }
