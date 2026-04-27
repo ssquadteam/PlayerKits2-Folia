@@ -1,5 +1,8 @@
 package pk.ajneb97.managers;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -7,6 +10,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import pk.ajneb97.PlayerKits2;
 import pk.ajneb97.configs.MainConfigManager;
 import pk.ajneb97.model.Kit;
@@ -21,6 +25,7 @@ import pk.ajneb97.model.inventory.KitInventory;
 import pk.ajneb97.model.item.KitItem;
 import pk.ajneb97.utils.ActionUtils;
 import pk.ajneb97.utils.ItemUtils;
+import pk.ajneb97.utils.OtherUtils;
 import pk.ajneb97.utils.PlayerUtils;
 
 import java.util.ArrayList;
@@ -83,13 +88,18 @@ public class InventoryManager {
 
     public void openInventory(InventoryPlayer inventoryPlayer){
         KitInventory kitInventory = getInventory(inventoryPlayer.getInventoryName());
+        MainConfigManager mainConfigManager = plugin.getConfigsManager().getMainConfigManager();
 
         String title = kitInventory.getTitle();
         if(inventoryPlayer.getInventoryName().equals("buy_requirements_inventory") || inventoryPlayer.getInventoryName().equals("preview_inventory")){
             title = title.replace("%kit%",inventoryPlayer.getKitName());
         }
-        Inventory inv = Bukkit.createInventory(null,kitInventory.getSlots(),
-                MessagesManager.getColoredMessage(title));
+        Inventory inv;
+        if(mainConfigManager.isUseMiniMessage()){
+            inv = Bukkit.createInventory(null,kitInventory.getSlots(), MiniMessage.miniMessage().deserialize(title));
+        }else{
+            inv = Bukkit.createInventory(null,kitInventory.getSlots(), MessagesManager.getLegacyColoredMessage(title));
+        }
 
         List<ItemKitInventory> items = kitInventory.getItems();
         KitItemManager kitItemManager = plugin.getKitItemManager();
@@ -102,7 +112,7 @@ public class InventoryManager {
                 String type = itemInventory.getType();
                 if(type != null && type.startsWith("kit: ")){
                     setKit(type.replace("kit: ",""),inventoryPlayer.getPlayer(),inv,slot,kitsManager
-                            ,playerDataManager,kitItemManager);
+                            ,playerDataManager,kitItemManager,null);
                     continue;
                 }
 
@@ -280,20 +290,6 @@ public class InventoryManager {
         openInventory(inventoryPlayer);
     }
 
-    public void clickOnCommandItem(InventoryPlayer inventoryPlayer,String itemCommands){
-        String[] sep = itemCommands.split("\\|");
-        for(String c : sep) {
-            if(c.startsWith("msg %player% ")) {
-                inventoryPlayer.getPlayer().sendMessage(MessagesManager.getColoredMessage(c.replace("msg %player% ", "")));
-            }else if(c.equals("close_inventory")){
-                inventoryPlayer.getPlayer().closeInventory();
-            }else{
-                String command = c.replace("%player%", inventoryPlayer.getPlayer().getName());
-                ActionUtils.consoleCommand(plugin, command);
-            }
-        }
-    }
-
     public void clickOnActionItem(InventoryPlayer inventoryPlayer,String itemActions) {
         String[] sep = itemActions.split("\\|");
 
@@ -305,11 +301,21 @@ public class InventoryManager {
     }
 
     public void setKit(String kitName, Player player, Inventory inv, int slot, KitsManager kitsManager, PlayerDataManager playerDataManager
-        ,KitItemManager kitItemManager){
+        ,KitItemManager kitItemManager,ItemStack currentItem){
         Kit kit = kitsManager.getKitByName(kitName);
         if(kit == null){
             return;
         }
+
+        // Check status before
+        String currentStatus = "default";
+        if(currentItem != null){
+            currentStatus = ItemUtils.getTagStringItem(plugin,currentItem,"playerkits_kit_status");
+            if(currentStatus == null){
+                currentStatus = "default";
+            }
+        }
+        String newStatus = "default";
 
         ArrayList<KitVariable> variablesToReplace = new ArrayList<>();
         variablesToReplace.add(new KitVariable("%kit_name%",kit.getName()));
@@ -317,16 +323,19 @@ public class InventoryManager {
         KitItem kitItem = null;
         if(!kit.playerHasPermission(player)){
             kitItem = kit.getDisplayItemNoPermission();
+            newStatus = "no_permission";
         }else{
             //One time
             if(kit.isOneTime() && !PlayerUtils.isPlayerKitsAdmin(player) && playerDataManager.isKitOneTime(player,kit.getName())){
                 kitItem = kit.getDisplayItemOneTime();
+                newStatus = "one_time";
             }
 
             //One time requirements
             if(kit.getRequirements() != null && kit.getRequirements().isOneTimeRequirements()
                 && playerDataManager.isKitBought(player,kit.getName())){
                 kitItem = kit.getDisplayItemOneTimeRequirements();
+                newStatus = "one_time_requirements";
             }
 
             //Cooldown
@@ -336,19 +345,58 @@ public class InventoryManager {
                 if(!timeStringMillisDif.isEmpty()) {
                     kitItem = kit.getDisplayItemCooldown();
                     variablesToReplace.add(new KitVariable("%time%",timeStringMillisDif));
+                    newStatus = "cooldown";
                 }
             }
         }
         if(kitItem == null){
             kitItem = kit.getDisplayItemDefault();
+            newStatus = "default";
         }
 
-        ItemStack item = kitItemManager.createItemFromKitItem(kitItem,player,kit);
-        kitItemManager.replaceVariables(item,variablesToReplace);
+        boolean useMiniMessage = plugin.getConfigsManager().getMainConfigManager().isUseMiniMessage();
+        if(newStatus.equals(currentStatus) && currentItem != null){
+            // Name and Lore update
+            ItemMeta meta = currentItem.getItemMeta();
 
-        item = ItemUtils.setTagStringItem(plugin,item, "playerkits_kit", kitName);
+            String name = kitItem.getName();
+            if(name != null){
+                name = OtherUtils.replaceGlobalVariables(name,player,plugin);
+                if(useMiniMessage){
+                    meta.displayName(MiniMessage.miniMessage().deserialize(name).decoration(TextDecoration.ITALIC, false));
+                }else{
+                    meta.setDisplayName(MessagesManager.getLegacyColoredMessage(name));
+                }
+            }
+            List<String> lore = kitItem.getLore();
+            if(lore != null) {
+                List<String> loreCopy = new ArrayList<>(lore);
+                if(useMiniMessage){
+                    List<Component> loreComponent = new ArrayList<>();
+                    for(int i=0;i<loreCopy.size();i++) {
+                        String line = OtherUtils.replaceGlobalVariables(loreCopy.get(i),player,plugin);
+                        loreComponent.add(MiniMessage.miniMessage().deserialize(line).decoration(TextDecoration.ITALIC, false));
+                    }
+                    meta.lore(loreComponent);
+                }else{
+                    for(int i=0;i<loreCopy.size();i++) {
+                        String line = OtherUtils.replaceGlobalVariables(loreCopy.get(i),player,plugin);
+                        loreCopy.set(i, MessagesManager.getLegacyColoredMessage(line));
+                    }
+                    meta.setLore(loreCopy);
+                }
+            }
+            currentItem.setItemMeta(meta);
 
-        inv.setItem(slot,item);
+            kitItemManager.replaceVariables(currentItem,variablesToReplace);
+        }else{
+            // Full update
+            ItemStack item = kitItemManager.createItemFromKitItem(kitItem,player,kit);
+            kitItemManager.replaceVariables(item,variablesToReplace);
+            item = ItemUtils.setTagStringItem(plugin,item, "playerkits_kit", kitName);
+            item = ItemUtils.setTagStringItem(plugin,item, "playerkits_kit_status", newStatus);
+            inv.setItem(slot,item);
+        }
     }
 
 
